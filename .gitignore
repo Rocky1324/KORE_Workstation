@@ -1,75 +1,7 @@
-# ========================
-# Python
-# ========================
 __pycache__/
-*.py[cod]
-*$py.class
-*.pyo
-*.pyd
-.Python
-*.egg-info/
-dist/
-build/
-eggs/
-.eggs/
-*.egg
-*.whl
-
-# Virtual environments
-venv/
-env/
+*.pyc
+backups/
+exports/
+docs/
 .venv/
-ENV/
-env.bak/
-venv.bak/
-
-# ========================
-# Database (données locales)
-# ========================
-kore.db
-*.db
-*.sqlite
-*.sqlite3
-
-# ========================
-# Dossiers de contenu local
-# ========================
-backups/*
-!backups/.gitkeep
-exports/*
-!exports/.gitkeep
-temp/*
-!temp/.gitkeep
-
-# ========================
-# Fichiers temporaires / debug
-# ========================
-debug_calc.py
-extracted_text.txt
-*.log
-*.tmp
-
-# ========================
-# Éditeurs & OS
-# ========================
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-.DS_Store
-Thumbs.db
-desktop.ini
-
-# ========================
-# Variables d'environnement
-# ========================
 .env
-.env.local
-*.env
-
-# ========================
-# Obsidian (si vault local)
-# ========================
-.obsidian/workspace
-.obsidian/cache

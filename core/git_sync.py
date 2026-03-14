@@ -55,25 +55,52 @@ class GitSyncManager:
         return {"success": True, "message": "Repo Git initialisé."}
 
     def sync(self, message="Update database sync"):
-        """Performs a Pull -> Add -> Commit -> Push cycle."""
+        """Performs a Pull -> Add -> Commit -> Push cycle with improved robustness."""
+        # 0. Check current branch
+        branch_res = self._run_git(["rev-parse", "--abbrev-ref", "HEAD"])
+        branch = branch_res["stdout"].strip() if branch_res["success"] else "main"
+
+        # 0.5 Check if remote origin exists
+        check_origin = self._run_git(["remote", "get-url", "origin"])
+        if not check_origin["success"]:
+            return {"success": False, "stderr": "Le dépôt distant 'origin' n'est pas configuré. Utilisez '/github [URL]' d'abord.", "code": -1}
+
         # 1. Pull changes
-        pull_res = self._run_git(["pull", "origin", "main", "--rebase"])
-        # If pull fails (maybe first time or conflict), we continue carefully
+        pull_res = self._run_git(["pull", "origin", branch, "--rebase"])
+        if not pull_res["success"]:
+            err = pull_res["stderr"].lower()
+            if "conflict" in err:
+                return {"success": False, "stderr": "Conflit détecté ! La version distante de la base de données diffère. Vous devez probablement forcer un push ou faire un backup manuel.", "code": -2}
+            elif "could not resolve host" in err:
+                return {"success": False, "stderr": "Pas de connexion internet ou serveur inaccessible.", "code": -3}
+            # If pull fails for other reasons, we might still want to try pushing if we are ahead
         
         # 2. Add database
-        # We might want to use git-lfs for binary files, but for small SQLite it's okay
+        if not os.path.exists(self.db_path):
+            return {"success": False, "stderr": f"Fichier {os.path.basename(self.db_path)} introuvable.", "code": -4}
+            
         add_res = self._run_git(["add", "kore.db"])
         if not add_res["success"]: return add_res
         
         # 3. Commit
         commit_res = self._run_git(["commit", "-m", message])
-        # If nothing to commit, commit_res.success will be False, but that's okay
+        # If nothing to commit, git returns returncode 1. We check the output.
+        if not commit_res["success"]:
+            if "nothing to commit" in commit_res["stdout"] or "rien à valider" in commit_res["stdout"]:
+                # This is actually a success state (already up to date locally)
+                pass
+            else:
+                return commit_res
         
         # 4. Push
-        push_res = self._run_git(["push", "origin", "main"])
+        push_res = self._run_git(["push", "origin", branch])
         if not push_res["success"]:
-            # If push fails, maybe we need to pull again
-            return {"success": False, "stderr": f"Erreur Push: {push_res['stderr']}", "stdout": push_res["stdout"]}
+            err = push_res["stderr"]
+            if "rejected" in err or "non-fast-forward" in err:
+                return {"success": False, "stderr": "Push rejeté : La version distante est plus récente. Tentez de synchroniser à nouveau.", "code": -5}
+            elif "403" in err or "permission denied" in err:
+                return {"success": False, "stderr": "Erreur d'authentification GitHub. Vérifiez vos identifiants ou votre token.", "code": -6}
+            return {"success": False, "stderr": f"Erreur Push: {err}", "stdout": push_res["stdout"]}
             
         return {"success": True, "message": "Synchronisation réussie !"}
 
