@@ -1,12 +1,28 @@
-# KORE-Workstation V6.5: Ultimate Engineering Hub 🚀🎓
+# KORE-Workstation V6.7: Ultimate Engineering Hub 🚀🎓
 
 **KORE-Workstation** est un assistant de travail personnel tout-en-un, conçu spécifiquement pour les étudiants en ingénierie et en sciences. Conçu avec Python et CustomTkinter, cet outil centralise vos révisions, vos logs de bugs, vos documents de cours et vos scripts personnalisés dans un environnement natif, moderne et "Dark Mode".
 
-![KORE-Workstation](https://img.shields.io/badge/Status-V6.5_Ultimate-success)
+![Version](https://img.shields.io/badge/Version-6.7-blue)
+![Status](https://img.shields.io/badge/Status-Active-brightgreen)
+![License](https://img.shields.io/badge/License-MIT-green)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue)
 ![CustomTkinter](https://img.shields.io/badge/UI-CustomTkinter-darkblue)
-![SQLite](https://img.shields.io/badge/DB-SQLite-lightgrey)
 
+---
+
+## 🚀 Quick Start
+
+### 📋 Prerequisites
+- Python 3.10+
+- Tesseract OCR (Optional, for screen capture)
+
+### ⚙️ Installation
+```bash
+git clone https://github.com/Rocky1324/KORE_Workstation.git
+cd KORE_Workstation
+pip install -r requirements.txt
+python main.py
+```
 ---
 
 ## 🌟 Fonctionnalités Principales
@@ -17,10 +33,10 @@ Le centre névralgique de votre productivité.
 - **Graphiques Dynamiques :** Suivez vos heures de focus Pomodoro et votre productivité journalière via Matplotlib.
 - **Facteur d'Urgence :** Récapitulatif intelligent de vos devoirs les plus proches avec alertes critiques.
 
-### 2. Bibliothèque / Garde-Document 📚
+### 2. Document Library & Reader 📚
 Votre lecteur intégré pour garder le flow.
 - **Rendu PDF Fluide :** Affichez vos cours directement avec zoom et navigation.
-- **Extraction Cognitive :** Extraire du texte vers le Journal, créer des cartes SRS ou convertir en LaTeX d'un clic droit.
+- **Smart Text Extraction :** Extraire du texte vers le Journal, créer des cartes SRS ou convertir en LaTeX d'un clic droit.
 
 ### 3. Math-Physics Tracker & SRS SM-2
 - **Algorithme SM-2 :** Calcul intelligent de la courbe d'oubli pour vos révisions.
@@ -65,18 +81,40 @@ Votre lecteur intégré pour garder le flow.
 - **Sync Mobile :** Nécessite que le PC et le mobile soient sur le même réseau local (souci mDNS possible).
 - **LaTeX Preview :** Certaines macros complexes nécessitent une syntaxe LaTeX standard stricte.
 
-### Roadmap 2026 🗺️
-- [ ] **Tests Automatisés :** Couverture complète des moteurs (`LabEngine`, `DataEngine`).
-- [ ] **Optimisation UI :** Passage à un rendu GPU pour les graphes de connaissances massifs.
-- [ ] **Plugin System :** Permettre l'ajout de modules tiers par la communauté.
+### 🐛 Troubleshooting
+**Q: Graph is slow with many cards**  
+A: This is a known limitation on older hardware. Consider archiving old cards or upgrading to GPU acceleration in future versions.
 
-### Contribuer 👥
-Les contributions sont les bienvenues !
-1. Forkez le projet.
-2. Créez votre branche (`git checkout -b feature/NewFeature`).
-3. Commitez vos changements.
-4. Ouvrez une Pull Request.
+**Q: Mobile sync not working?**  
+A: Ensure both devices are on the same WiFi network. Check if the PC server is running and accessible.
+
+**Q: LaTeX preview shows errors?**  
+A: Use standard LaTeX syntax. Custom macros may not render correctly in the live preview.
+
+### Roadmap 2026 🗺️
+- [ ] **Tests Automatisés** (High Priority, Q2 2026) : Couverture complète des moteurs.
+- [ ] **Optimisation UI** (Medium Priority, Q3 2026) : Passage à un rendu GPU pour les graphes massifs.
+- [ ] **Plugin System** (Future, Post-2026) : Architecture modulaire pour extensions tierces.
+
+### 🤝 Contributing
+We welcome contributions!
+1. Fork the project.
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`).
+3. Commit your changes.
+4. Open a Pull Request.
+
+---
+
+## 📄 License
+This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
+
+---
+
+## 📍 Links
+- **Issues & Features:** [GitHub Issues](https://github.com/Rocky1324/KORE_Workstation/issues)
+- **Discussions:** [GitHub Discussions](https://github.com/Rocky1324/KORE_Workstation/discussions)
+- **Wiki & Docs:** [Documentation](https://github.com/Rocky1324/KORE_Workstation/wiki)
 
 ---
 **KORE : Développé pour l'excellence technique et la productivité maximale.**
-*Version 6.5 (Ultimate Engineering Edition)*
+*Version 6.7 (Ultimate Engineering Edition)*
