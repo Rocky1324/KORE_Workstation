@@ -151,7 +151,75 @@ class ConstantsWidget(DesktopWidget):
 
 class NoteWidget(DesktopWidget):
     def __init__(self, master):
-        super().__init__(master, title="Quick Note", size=(300, 250))
+        super().__init__(master, title="Quick Note", size=(300, 300))
         self.text = ctk.CTkTextbox(self, font=ctk.CTkFont(family="Consolas", size=12))
-        self.text.pack(fill="both", expand=True, padx=10, pady=10)
+        self.text.pack(fill="both", expand=True, padx=10, pady=(10, 5))
         self.text.insert("1.0", "Notes temporaires...")
+        
+        self.save_btn = ctk.CTkButton(self, text="💾 Sauvegarder en PDF", 
+                                     fg_color="#1f538d", hover_color="#2a6ab3",
+                                     command=self._save_as_pdf)
+        self.save_btn.pack(fill="x", padx=10, pady=(5, 10))
+
+    def _save_as_pdf(self):
+        import fitz
+        from datetime import datetime
+        import os
+        
+        content = self.text.get("1.0", "end-1c").strip()
+        if not content:
+            return
+            
+        # Ensure library folder exists
+        lib_path = os.path.join(os.getcwd(), "kore_library")
+        if not os.path.exists(lib_path):
+            os.makedirs(lib_path)
+            
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"Note_{timestamp}.pdf"
+        filepath = os.path.join(lib_path, filename)
+        
+        try:
+            doc = fitz.open()
+            page = doc.new_page()
+            
+            # Margins and dimensions
+            margin = 50
+            width = page.rect.width
+            height = page.rect.height
+            
+            # Optional: Add a subtle border to the page
+            page.draw_rect(fitz.Rect(margin-10, margin-10, width-margin+10, height-margin+10), color=(0.12, 0.32, 0.55), width=0.5)
+            
+            # Insert title
+            page.insert_text(fitz.Point(margin, margin - 10), f"Note KORE - {timestamp}", fontsize=8, color=(0.5, 0.5, 0.5))
+            
+            # Insert content
+            rect = fitz.Rect(margin, margin, width - margin, height - margin)
+            
+            # Try to use a more robust font if possible, or just standard ones
+            # We use 'helv' but with a more direct insertion to avoid textbox failures
+            res = page.insert_textbox(rect, content, fontsize=11, fontname="helv", align=0)
+            
+            # If insert_textbox fails significantly (returns negative result or something suspicious)
+            # or if we want to be safe, we also try insert_text for each line
+            if res < 0:
+                 page.insert_text(fitz.Point(margin, margin), content, fontsize=11)
+
+            doc.save(filepath)
+            doc.close()
+            
+            # Refresh library if visible
+            if hasattr(self.master, "app_instance"):
+                app = self.master.app_instance
+                for child in app.content_frame.winfo_children():
+                    if type(child).__name__ == "LibraryView":
+                        child.refresh_library()
+            
+            # Temporary title change for feedback
+            self.title_lbl.configure(text="✅ PDF Sauvegardé !")
+            self.after(2000, lambda: self.title_lbl.configure(text="Quick Note"))
+        except Exception as e:
+            print(f"Error saving PDF: {e}")
+            self.title_lbl.configure(text="❌ Erreur")
+            self.after(2000, lambda: self.title_lbl.configure(text="Quick Note"))

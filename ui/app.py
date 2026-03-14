@@ -14,12 +14,14 @@ class MainWindow(ctk.CTk):
         
         # Initialisation Core
         from database.db_manager import DBManager
+        from core.theme_manager import theme_manager
         from core.calculator import CalcEngine
         from core.latex_exporter import LaTeXExporter
         from core.srs_intelligence import SRSIntelligence
         from core.git_sync import GitSyncManager
         from core.vision_engine import VisionEngine
         self.db = DBManager()
+        self.theme_manager = theme_manager
         self.engine = CalcEngine()
         self.exporter = LaTeXExporter(self.db)
         self.srs_intel = SRSIntelligence()
@@ -30,6 +32,9 @@ class MainWindow(ctk.CTk):
         self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(1, weight=1)
 
+        # Applying initial window background
+        self.configure(fg_color=self.theme_manager.get_color("bg_primary"))
+
         self._create_sidebar()
         self._create_main_frame()
         
@@ -38,7 +43,7 @@ class MainWindow(ctk.CTk):
 
     def _create_sidebar(self):
         # Frame de la sidebar
-        self.sidebar_frame = ctk.CTkFrame(self, width=200, corner_radius=0)
+        self.sidebar_frame = ctk.CTkFrame(self, width=200, corner_radius=0, fg_color=self.theme_manager.get_color("sidebar"))
         self.sidebar_frame.grid(row=0, column=0, sticky="nsew")
         self.sidebar_frame.grid_rowconfigure(7, weight=1) # Espace vide en bas
 
@@ -75,8 +80,15 @@ class MainWindow(ctk.CTk):
         self.btn_library = ctk.CTkButton(self.sidebar_frame, text="Garde-Document", command=self.show_library)
         self.btn_library.grid(row=9, column=0, padx=20, pady=10)
         
+        self.btn_graph = ctk.CTkButton(self.sidebar_frame, text="Graphe (Savoir)", command=self.show_graph)
+        self.btn_graph.grid(row=10, column=0, padx=20, pady=10)
+        
+        self.btn_bridge = ctk.CTkButton(self.sidebar_frame, text="Pont Numérique 📱", command=self.show_bridge, 
+                                       fg_color="#F57C00", hover_color="#E65100")
+        self.btn_bridge.grid(row=11, column=0, padx=20, pady=10)
+        
         # Espace vide en bas
-        self.sidebar_frame.grid_rowconfigure(10, weight=1)
+        self.sidebar_frame.grid_rowconfigure(12, weight=1)
 
     def _create_main_frame(self):
         # Frame principale pour le contenu
@@ -95,11 +107,11 @@ class MainWindow(ctk.CTk):
         self.content_frame.grid(row=1, column=0, sticky="nsew")
 
         # Status Bar
-        self.status_bar = ctk.CTkFrame(self.main_frame, height=30, fg_color="#1E1E1E", corner_radius=5)
+        self.status_bar = ctk.CTkFrame(self.main_frame, height=30, fg_color=self.theme_manager.get_color("sidebar"), corner_radius=5)
         self.status_bar.grid(row=2, column=0, sticky="ew", pady=(10, 0))
         self.status_bar.grid_columnconfigure(0, weight=1)
         
-        self.status_label = ctk.CTkLabel(self.status_bar, text="", font=ctk.CTkFont(size=12, slant="italic"), text_color="gray")
+        self.status_label = ctk.CTkLabel(self.status_bar, text="", font=ctk.CTkFont(size=12, slant="italic"), text_color=self.theme_manager.get_color("text_secondary"))
         self.status_label.grid(row=0, column=0, padx=10, pady=2, sticky="ew")
         
         self.quotes = [
@@ -120,79 +132,142 @@ class MainWindow(ctk.CTk):
         self.status_label.configure(text=f"{now}  |  {self.current_quote}")
         self.after(1000, self._update_status_bar)
 
+    def _highlight_button(self, active_button):
+        buttons = [
+            self.btn_dashboard, self.btn_tracker, self.btn_journal,
+            self.btn_pomodoro, self.btn_latex, self.btn_calc,
+            self.btn_lab, self.tasks_button, self.btn_library, self.btn_bridge,
+            self.btn_graph
+        ]
+        
+        active_color = self.theme_manager.get_color("fg_button")
+        accent_color = self.theme_manager.get_color("accent")
+        
+        for btn in buttons:
+            if btn == active_button:
+                if btn == self.btn_bridge:
+                    btn.configure(fg_color=accent_color) 
+                else:
+                    btn.configure(fg_color=active_color) 
+            else:
+                if btn == self.btn_bridge:
+                    btn.configure(fg_color="#F57C00") # Default orange
+                else:
+                    btn.configure(fg_color="transparent")
+
+    def reload_theme(self):
+        # Helper to force UI refresh when theme changes
+        self.configure(fg_color=self.theme_manager.get_color("bg_primary"))
+        self.sidebar_frame.configure(fg_color=self.theme_manager.get_color("sidebar"))
+        self.status_bar.configure(fg_color=self.theme_manager.get_color("sidebar"))
+        self.status_label.configure(text_color=self.theme_manager.get_color("text_secondary"))
+        # Refresh current view
+        self._highlight_button(None) # Reset all
+        if hasattr(self, 'current_view_method'):
+            self.current_view_method()
+
     def _clear_content(self):
         for widget in self.content_frame.winfo_children():
             widget.destroy()
 
     def show_dashboard(self):
+        self.current_view_method = self.show_dashboard
         self._clear_content()
         from ui.dashboard_view import DashboardView
-        
         dashboard_view = DashboardView(self.content_frame, fg_color="transparent")
         dashboard_view.pack(fill="both", expand=True)
+        self._highlight_button(self.btn_dashboard)
 
     def show_tracker(self):
+        self.current_view_method = self.show_tracker
         self._clear_content()
         from ui.tracker_view import TrackerView
-        
         tracker_view = TrackerView(self.content_frame, fg_color="transparent")
         tracker_view.pack(fill="both", expand=True)
+        self._highlight_button(self.btn_tracker)
 
     def show_journal(self):
+        self.current_view_method = self.show_journal
         self._clear_content()
         from ui.journal_view import JournalView
-        
         journal_view = JournalView(self.content_frame, fg_color="transparent")
         journal_view.pack(fill="both", expand=True)
+        self._highlight_button(self.btn_journal)
         
     def show_pomodoro(self):
+        self.current_view_method = self.show_pomodoro
         self._clear_content()
         from ui.pomodoro_view import PomodoroView
-        
         pomodoro_view = PomodoroView(self.content_frame, fg_color="transparent")
         pomodoro_view.pack(fill="both", expand=True)
+        self._highlight_button(self.btn_pomodoro)
 
     def show_latex(self):
+        self.current_view_method = self.show_latex
         self._clear_content()
         from ui.latex_preview_view import LatexPreviewView
-        
         latex_view = LatexPreviewView(self.content_frame, fg_color="transparent")
         latex_view.pack(fill="both", expand=True)
+        self._highlight_button(self.btn_latex)
 
     def show_calculator(self, expression=None):
+        self.current_view_method = self.show_calculator
         self._clear_content()
         from ui.calculator_view import CalculatorView
-        
         calc_view = CalculatorView(self.content_frame, fg_color="transparent")
         calc_view.pack(fill="both", expand=True)
-        
         if expression:
             calc_view.set_expression(expression)
         self._highlight_button(self.btn_calc)
 
     def show_lab(self):
+        self.current_view_method = self.show_lab
         self._clear_content()
         from ui.lab_view import LabView
-        
         lab_view = LabView(self.content_frame, fg_color="transparent")
         lab_view.pack(fill="both", expand=True)
         self._highlight_button(self.btn_lab)
 
     def show_tasks(self):
+        self.current_view_method = self.show_tasks
         self._clear_content()
         from ui.task_manager_view import TaskManagerView
         task_view = TaskManagerView(self.content_frame, fg_color="transparent")
         task_view.pack(fill="both", expand=True)
-        if hasattr(self, '_highlight_button'):
-            self._highlight_button(self.tasks_button)
+        self._highlight_button(self.tasks_button)
 
     def show_library(self):
+        self.current_view_method = self.show_library
         self._clear_content()
         from ui.library_view import LibraryView
         lib_view = LibraryView(self.content_frame, app_instance=self, fg_color="transparent")
         lib_view.pack(fill="both", expand=True)
-        if hasattr(self, '_highlight_button'):
-            self._highlight_button(self.btn_library)
+        self._highlight_button(self.btn_library)
+
+    def show_graph(self):
+        self.current_view_method = self.show_graph
+        self._clear_content()
+        from ui.graph_view import GraphView
+        graph_view = GraphView(self.content_frame, app_instance=self, fg_color="transparent")
+        graph_view.pack(fill="both", expand=True)
+        self._highlight_button(self.btn_graph)
+
+    def show_bridge(self):
+        self.current_view_method = self.show_bridge
+        from tkinter import messagebox
+        self._clear_content()
+        try:
+            from ui.bridge_view import BridgeView
+            bridge_view = BridgeView(self.content_frame, fg_color="transparent")
+            bridge_view.pack(fill="both", expand=True)
+        except Exception as e:
+            import traceback
+            err_msg = f"Erreur critique lors du chargement du Pont Numérique:\n{str(e)}\n\n{traceback.format_exc()}"
+            messagebox.showerror("Erreur KORE", err_msg)
+            error_label = ctk.CTkLabel(self.content_frame, text="Impossible de charger cette vue.", text_color="red")
+            error_label.pack(pady=50)
+            
+        self._highlight_button(self.btn_bridge)
 
     def _show_srs_validation(self, cards):
         if not cards:

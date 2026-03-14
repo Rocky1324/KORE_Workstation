@@ -5,13 +5,11 @@ from datetime import datetime, timedelta
 class DBManager:
     def __init__(self, db_path="kore.db"):
         self.db_path = db_path
-        self._conn = None
         self.init_db()
 
     def get_connection(self):
-        if self._conn is None:
-            self._conn = sqlite3.connect(self.db_path, check_same_thread=False)
-        return self._conn
+        """Returns a new connection with a timeout for concurrent access."""
+        return sqlite3.connect(self.db_path, timeout=10, check_same_thread=False)
 
     def init_db(self):
         schema_path = os.path.join(os.path.dirname(__file__), "init_db.sql")
@@ -31,7 +29,9 @@ class DBManager:
             columns = [col[1] for col in cursor.fetchall()]
             if 'completed_at' not in columns:
                 cursor.execute("ALTER TABLE tasks ADD COLUMN completed_at DATE")
-            
+                
+            if 'dependency_id' not in columns:
+                cursor.execute("ALTER TABLE tasks ADD COLUMN dependency_id INTEGER REFERENCES tasks(id)")
             
             # Initialize default formulas
             cursor = conn.cursor()
@@ -127,63 +127,64 @@ class DBManager:
 
     def get_study_sessions(self, limit=14):
         # Fetch last 14 days of study data
-        cursor = self.get_connection().cursor()
-        cursor.execute("SELECT date, reviews_completed FROM study_sessions ORDER BY date ASC LIMIT ?", (limit,))
-        return cursor.fetchall()
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT date, reviews_completed FROM study_sessions ORDER BY date ASC LIMIT ?", (limit,))
+            return cursor.fetchall()
 
     def get_dashboard_data(self):
         """Batches multiple KPI queries into one set of results for performance."""
         today = datetime.now().strftime("%Y-%m-%d")
-        conn = self.get_connection()
-        cursor = conn.cursor()
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
         
-        # 1. Due Cards
-        cursor.execute("SELECT COUNT(*) FROM reviews WHERE next_review_date <= ?", (today,))
-        due_cards = cursor.fetchone()[0]
-        
-        # 2. Latest Journal
-        cursor.execute("SELECT title FROM journal ORDER BY id DESC LIMIT 1")
-        row = cursor.fetchone()
-        latest_log = row[0] if row else "Aucun log"
-        
-        # 3. Pending Tasks
-        cursor.execute("SELECT text FROM tasks WHERE status != 'Fait' ORDER BY priority DESC, deadline ASC LIMIT 4")
-        tasks = [t[0] for t in cursor.fetchall()]
-        
-        # 4. Homework Urgency
-        limit_hw = (datetime.now() + timedelta(days=5)).strftime("%Y-%m-%d")
-        cursor.execute('''SELECT subject, title, deadline FROM homework 
-                          WHERE deadline <= ? AND status != 'Fait' 
-                          ORDER BY deadline ASC''', (limit_hw,))
-        homework = cursor.fetchall()
-        
-        # 5. Study Sessions (Activity Chart)
-        cursor.execute("SELECT date, reviews_completed FROM study_sessions ORDER BY date DESC LIMIT 7")
-        sessions = cursor.fetchall()
+            # 1. Due Cards
+            cursor.execute("SELECT COUNT(*) FROM reviews WHERE next_review_date <= ?", (today,))
+            due_cards = cursor.fetchone()[0]
+            
+            # 2. Latest Journal
+            cursor.execute("SELECT title FROM journal ORDER BY id DESC LIMIT 1")
+            row = cursor.fetchone()
+            latest_log = row[0] if row else "Aucun log"
+            
+            # 3. Pending Tasks
+            cursor.execute("SELECT text FROM tasks WHERE status != 'Fait' ORDER BY priority DESC, deadline ASC LIMIT 4")
+            tasks = [t[0] for t in cursor.fetchall()]
+            
+            # 4. Homework Urgency
+            limit_hw = (datetime.now() + timedelta(days=5)).strftime("%Y-%m-%d")
+            cursor.execute('''SELECT subject, title, deadline FROM homework 
+                              WHERE deadline <= ? AND status != 'Fait' 
+                              ORDER BY deadline ASC''', (limit_hw,))
+            homework = cursor.fetchall()
+            
+            # 5. Study Sessions (Activity Chart)
+            cursor.execute("SELECT date, reviews_completed FROM study_sessions ORDER BY date DESC LIMIT 7")
+            sessions = cursor.fetchall()
 
-        # Pomodoro Sessions (Last 7 days)
-        cursor.execute("SELECT date, SUM(duration_minutes) FROM pomodoro_sessions GROUP BY date ORDER BY date DESC LIMIT 7")
-        pomodoro = cursor.fetchall()
-        
-        # Completed Tasks (Last 7 days)
-        cursor.execute("SELECT completed_at, COUNT(*) FROM tasks WHERE status = 'Fait' AND completed_at IS NOT NULL GROUP BY completed_at ORDER BY completed_at DESC LIMIT 7")
-        completed_tasks = cursor.fetchall()
+            # Pomodoro Sessions (Last 7 days)
+            cursor.execute("SELECT date, SUM(duration_minutes) FROM pomodoro_sessions GROUP BY date ORDER BY date DESC LIMIT 7")
+            pomodoro = cursor.fetchall()
+            
+            # Completed Tasks (Last 7 days)
+            cursor.execute("SELECT completed_at, COUNT(*) FROM tasks WHERE status = 'Fait' AND completed_at IS NOT NULL GROUP BY completed_at ORDER BY completed_at DESC LIMIT 7")
+            completed_tasks = cursor.fetchall()
 
-        # 6. Git Status (Batched for performance)
-        from core.git_sync import GitSyncManager
-        sync_status = GitSyncManager().get_status()
-        
-        return {
-            "due_cards": due_cards,
-            "latest_log": latest_log,
-            "tasks": tasks,
-            "homework": homework,
-            "sessions": dict(sessions),
-            "pomodoro": dict(pomodoro),
-            "completed_tasks": dict(completed_tasks),
-            "streak": self.get_current_streak(),
-            "sync_status": sync_status
-        }
+            # 6. Git Status (Batched for performance)
+            from core.git_sync import GitSyncManager
+            sync_status = GitSyncManager().get_status()
+            
+            return {
+                "due_cards": due_cards,
+                "latest_log": latest_log,
+                "tasks": tasks,
+                "homework": homework,
+                "sessions": dict(sessions),
+                "pomodoro": dict(pomodoro),
+                "completed_tasks": dict(completed_tasks),
+                "streak": self.get_current_streak(),
+                "sync_status": sync_status
+            }
             
     def get_due_cards_count(self):
         today = datetime.now().strftime("%Y-%m-%d")
@@ -193,19 +194,29 @@ class DBManager:
             return cursor.fetchone()[0]
             
     def get_current_streak(self):
-        """Calculates consecutive days of study from today backwards."""
+        """Calculates consecutive days of activity from today backwards. Includes both SRS and completed Tasks."""
         today = datetime.now().date()
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT date FROM study_sessions ORDER BY date DESC")
-            dates = [datetime.strptime(row[0], "%Y-%m-%d").date() for row in cursor.fetchall()]
+            
+            # Get dates from study sessions
+            cursor.execute("SELECT date FROM study_sessions")
+            srs_dates = [row[0] for row in cursor.fetchall()]
+            
+            # Get dates from completed tasks
+            cursor.execute("SELECT datetime(completed_at) FROM tasks WHERE status = 'Fait' AND completed_at IS NOT NULL")
+            task_dates = [row[0][:10] for row in cursor.fetchall() if row[0]] # Get YYYY-MM-DD
+            
+            # Combine, deduplicate, convert to date objects, and sort descending
+            all_date_strs = set(srs_dates).union(set(task_dates))
+            dates = sorted([datetime.strptime(d, "%Y-%m-%d").date() for d in all_date_strs], reverse=True)
         
         if not dates: return 0
         
         streak = 0
         current_date = today
         
-        # If they haven't studied today, but studied yesterday, the streak is still alive
+        # If they haven't been active today, but were active yesterday, the streak is still alive
         if dates[0] == today:
             streak = 1
             idx = 1
@@ -241,6 +252,20 @@ class DBManager:
             cursor = conn.cursor()
             cursor.execute("SELECT id, date, title, content, keywords FROM journal ORDER BY date DESC, id DESC LIMIT ?", (limit,))
             return cursor.fetchall()
+
+    def update_journal_entry(self, entry_id, title, content, keywords):
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''UPDATE journal 
+                              SET title = ?, content = ?, keywords = ?
+                              WHERE id = ?''', (title, content, keywords, entry_id))
+            conn.commit()
+
+    def delete_journal_entry(self, entry_id):
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM journal WHERE id = ?", (entry_id,))
+            conn.commit()
             
     def get_latest_journal_title(self):
         with self.get_connection() as conn:
@@ -322,11 +347,12 @@ class DBManager:
             conn.commit()
             return cursor.lastrowid
 
-    def add_task(self, text, priority=3, deadline=None, project_id=None, parent_id=None):
+    def add_task(self, text, priority=3, deadline=None, project_id=None, parent_id=None, status="À faire", dependency_id=None):
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute('''INSERT INTO tasks (text, priority, deadline, project_id, parent_id) 
-                              VALUES (?, ?, ?, ?, ?)''', (text, priority, deadline, project_id, parent_id))
+            # Ensure table has new columns if via older init_db by inserting named
+            cursor.execute('''INSERT INTO tasks (text, priority, deadline, project_id, parent_id, status, dependency_id) 
+                              VALUES (?, ?, ?, ?, ?, ?, ?)''', (text, priority, deadline, project_id, parent_id, status, dependency_id))
             conn.commit()
             return cursor.lastrowid
 
@@ -344,10 +370,21 @@ class DBManager:
             task = cursor.fetchone()
             if task and task[1] and status == 'Fait':
                 cursor.execute("SELECT name FROM projects WHERE id = ?", (task[1],))
-                proj_name = cursor.fetchone()[0]
-                self.add_journal_entry(f"Tâche terminée: {task[0]}", 
-                                       f"Projet: {proj_name}\nStatus: Complété via /done.", 
-                                       "Auto-Task")
+                res = cursor.fetchone()
+                if res:
+                    proj_name = res[0]
+                    self.add_journal_entry(f"Tâche terminée: {task[0]}", 
+                                           f"Projet: {proj_name}\nStatus: {status} via /done ou Kanban.", 
+                                           "Auto-Task")
+            conn.commit()
+
+    def update_task_detailed(self, task_id, text, status, dependency_id):
+        today = datetime.now().strftime("%Y-%m-%d")
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            comp = today if status == 'Fait' else None
+            cursor.execute("UPDATE tasks SET text = ?, status = ?, completed_at = ?, dependency_id = ? WHERE id = ?", 
+                           (text, status, comp, dependency_id, task_id))
             conn.commit()
 
     def log_pomodoro_session(self, duration_minutes):
@@ -376,10 +413,10 @@ class DBManager:
     def get_project_tasks(self, project_id):
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute('''SELECT id, text, status, priority, deadline 
+            cursor.execute('''SELECT id, text, status, priority, deadline, dependency_id 
                               FROM tasks 
                               WHERE project_id = ? 
-                              ORDER BY status ASC, priority DESC''', (project_id,))
+                              ORDER BY id ASC''', (project_id,))
             return cursor.fetchall()
 
     def get_all_homework(self):
@@ -392,6 +429,12 @@ class DBManager:
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("DELETE FROM homework WHERE id = ?", (hw_id,))
+            conn.commit()
+
+    def update_homework_status(self, hw_id, status='Fait'):
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("UPDATE homework SET status = ? WHERE id = ?", (status, hw_id))
             conn.commit()
 
     def delete_task(self, task_id):

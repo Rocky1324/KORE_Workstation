@@ -73,6 +73,10 @@ class LibraryView(ctk.CTkFrame):
         self.btn_next = ctk.CTkButton(self.toolbar_f, text="▶", width=30, command=self._next_page, state="disabled")
         self.btn_next.pack(side="left", padx=5)
         
+        self.btn_fullscreen = ctk.CTkButton(self.toolbar_f, text="⛶ Plein Écran", width=120, command=self._open_fullscreen, state="disabled", fg_color="#1f538d", hover_color="#2a6ab3")
+        self.btn_fullscreen.pack(side="right", padx=10)
+
+        
         # 1. Text Viewer (For raw files)
         self.text_viewer = ctk.CTkTextbox(self.viewer_frame, font=ctk.CTkFont(family="Consolas", size=14), wrap="word")
         
@@ -197,6 +201,7 @@ class LibraryView(ctk.CTkFrame):
                 self.current_page = 0
                 self.btn_prev.configure(state="normal")
                 self.btn_next.configure(state="normal")
+                self.btn_fullscreen.configure(state="normal")
                 self._render_pdf_page()
             except Exception as e:
                 self.page_lbl.configure(text="Err chargement PDF")
@@ -207,6 +212,7 @@ class LibraryView(ctk.CTkFrame):
             self.text_viewer.grid(row=1, column=0, sticky="nsew", padx=10, pady=10)
             self.btn_prev.configure(state="disabled")
             self.btn_next.configure(state="disabled")
+            self.btn_fullscreen.configure(state="normal")
             self.page_lbl.configure(text=f"Fichier : {os.path.basename(path)}")
             
             try:
@@ -261,6 +267,86 @@ class LibraryView(ctk.CTkFrame):
         if self.current_pdf_doc and self.current_page > 0:
             self.current_page -= 1
             self._render_pdf_page()
+
+    def _open_fullscreen(self):
+        if not self.current_extension: return
+        
+        fs_win = ctk.CTkToplevel(self)
+        fs_win.title("Lecteur Plein Écran")
+        fs_win.geometry("800x600")
+        fs_win.attributes("-topmost", True)
+        fs_win.after(200, lambda: fs_win.state('zoomed')) # Maximize window
+        
+        top_bar = ctk.CTkFrame(fs_win, height=40, fg_color="#222222")
+        top_bar.pack(fill="x", side="top")
+        
+        close_btn = ctk.CTkButton(top_bar, text="Fermer ❌", fg_color="#ff5555", hover_color="#cc0000", command=fs_win.destroy, width=80)
+        close_btn.pack(side="right", padx=10, pady=5)
+        
+        if self.current_extension == 'pdf':
+            lbl_title = ctk.CTkLabel(top_bar, text="Lecteur PDF Plein Écran", font=ctk.CTkFont(weight="bold"))
+            lbl_title.pack(side="left", padx=10)
+            
+            lbl_page = ctk.CTkLabel(top_bar, text="")
+            lbl_page.pack(side="left", padx=20)
+            
+            canvas_container = ctk.CTkScrollableFrame(fs_win, fg_color="#1a1a1a")
+            canvas_container.pack(fill="both", expand=True, padx=5, pady=5)
+            
+            fs_canvas = tk.Canvas(canvas_container, bg="#1a1a1a", highlightthickness=0)
+            fs_canvas.pack(fill="x", pady=10)
+            
+            def render_fs():
+                if not self.current_pdf_doc: return
+                page = self.current_pdf_doc[self.current_page]
+                lbl_page.configure(text=f"Page {self.current_page + 1} / {len(self.current_pdf_doc)}")
+                
+                # Higher resolution for fullscreen
+                mat = fitz.Matrix(2.0, 2.0)
+                pix = page.get_pixmap(matrix=mat)
+                mode = "RGBA" if pix.alpha else "RGB"
+                img = Image.frombytes(mode, [pix.width, pix.height], pix.samples)
+                
+                fs_win.pdf_image = ImageTk.PhotoImage(img) # Prevent garbage collection
+                fs_canvas.configure(width=pix.width, height=pix.height)
+                fs_canvas.delete("all")
+                fs_canvas.create_image(0, 0, image=fs_win.pdf_image, anchor="nw")
+                fs_canvas.configure(scrollregion=fs_canvas.bbox("all"))
+                
+                # Keep main window in sync
+                self._render_pdf_page()
+                
+            def next_fs():
+                if self.current_pdf_doc and self.current_page < len(self.current_pdf_doc) - 1:
+                    self.current_page += 1
+                    render_fs()
+                    
+            def prev_fs():
+                if self.current_pdf_doc and self.current_page > 0:
+                    self.current_page -= 1
+                    render_fs()
+                    
+            btn_prev_fs = ctk.CTkButton(top_bar, text="◀", width=30, command=prev_fs)
+            btn_prev_fs.pack(side="left", padx=5)
+            btn_next_fs = ctk.CTkButton(top_bar, text="▶", width=30, command=next_fs)
+            btn_next_fs.pack(side="left", padx=5)
+            
+            # Key bindings for navigation
+            fs_win.bind("<Right>", lambda e: next_fs())
+            fs_win.bind("<Left>", lambda e: prev_fs())
+            fs_win.bind("<Escape>", lambda e: fs_win.destroy())
+            
+            render_fs()
+            
+        else:
+            lbl_title = ctk.CTkLabel(top_bar, text="Lecteur Texte Plein Écran", font=ctk.CTkFont(weight="bold"))
+            lbl_title.pack(side="left", padx=10)
+            fs_win.bind("<Escape>", lambda e: fs_win.destroy())
+            
+            txt_box = ctk.CTkTextbox(fs_win, font=ctk.CTkFont(family="Consolas", size=18), wrap="word")
+            txt_box.pack(fill="both", expand=True, padx=20, pady=20)
+            txt_box.insert("1.0", self.text_viewer.get("1.0", "end-1c"))
+
 
     # --- Context Menu Logic ---
     def _show_context_menu(self, event):

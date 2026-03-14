@@ -125,105 +125,275 @@ class TaskManagerView(ctk.CTkFrame):
                          command=lambda i=h_id: self._delete_hw(i)).pack(side="left", padx=5)
 
     def _mark_hw_done(self, hw_id):
-        with self.db.get_connection() as conn:
-            conn.execute("UPDATE homework SET status = 'Fait' WHERE id = ?", (hw_id,))
-            conn.commit()
+        self.db.update_homework_status(hw_id, 'Fait')
         self.refresh_homework()
 
     def _delete_hw(self, hw_id):
         self.db.delete_homework(hw_id)
         self.refresh_homework()
 
-    # --- PROJECTS TAB ---
+    # --- PROJECTS TAB & KANBAN ---
     def _setup_projects_ui(self):
+        self._active_project_id = None
+        self._drag_data = {"id": None, "widget": None, "clone": None, "status": None}
+        self.projects_map = {} # {name: id}
+        
         self.tab_projects.grid_columnconfigure(0, weight=1)
         self.tab_projects.grid_rowconfigure(1, weight=1)
         
-        # Form
-        form_f = ctk.CTkFrame(self.tab_projects, fg_color="#1a1a1a", corner_radius=10)
-        form_f.grid(row=0, column=0, sticky="ew", padx=10, pady=10)
+        # --- Top Bar ---
+        self.p_top_bar = ctk.CTkFrame(self.tab_projects, fg_color="transparent")
+        self.p_top_bar.grid(row=0, column=0, sticky="ew", padx=10, pady=10)
         
-        self.p_name_entry = ctk.CTkEntry(form_f, placeholder_text="Nom du projet (ex: MTU Prototype)", width=250)
-        self.p_name_entry.pack(side="left", padx=15, pady=10)
+        ctk.CTkLabel(self.p_top_bar, text="Projet Actif:").pack(side="left", padx=10)
         
-        self.p_desc_entry = ctk.CTkEntry(form_f, placeholder_text="Description courte", width=300)
-        self.p_desc_entry.pack(side="left", padx=5)
+        self.p_combo = ctk.CTkOptionMenu(self.p_top_bar, values=["Aucun"], command=self._on_project_select)
+        self.p_combo.pack(side="left", padx=10)
         
-        ctk.CTkButton(form_f, text="+ Créer Projet", width=120, command=self._ui_create_project).pack(side="right", padx=15)
+        ctk.CTkButton(self.p_top_bar, text="+ Projet", width=80, command=self._ui_create_project).pack(side="left", padx=10)
+        ctk.CTkButton(self.p_top_bar, text="+ Tâche", width=80, fg_color="#1f538d", command=self._ui_add_task_to_project).pack(side="left", padx=10)
+        
+        ctk.CTkButton(self.p_top_bar, text="🗑️", width=40, fg_color="#dc3545", hover_color="#c82333", command=self._delete_active_project).pack(side="right", padx=10)
 
-        self.proj_scroll = ctk.CTkScrollableFrame(self.tab_projects, fg_color="transparent")
-        self.proj_scroll.grid(row=1, column=0, sticky="nsew", padx=5, pady=5)
+        # --- Kanban Board (Row 1) ---
+        self.kanban_f = ctk.CTkFrame(self.tab_projects, fg_color="transparent")
+        self.kanban_f.grid(row=1, column=0, sticky="nsew", padx=5, pady=5)
+        self.kanban_f.grid_columnconfigure((0, 1, 2), weight=1)
+        self.kanban_f.grid_rowconfigure(1, weight=1)
+        
+        self.columns = {}
+        for i, (status, col_col) in enumerate([("À faire", "#444444"), ("En cours", "#1f538d"), ("Fait", "#28a745")]):
+            hdr = ctk.CTkFrame(self.kanban_f, fg_color=col_col, height=30, corner_radius=5)
+            hdr.grid(row=0, column=i, sticky="ew", padx=5, pady=2)
+            ctk.CTkLabel(hdr, text=status, font=ctk.CTkFont(weight="bold")).pack()
+            
+            scroll = ctk.CTkScrollableFrame(self.kanban_f, fg_color="#1e1e1e", corner_radius=5)
+            scroll.grid(row=1, column=i, sticky="nsew", padx=5, pady=2)
+            self.columns[status] = scroll
+            
         self.refresh_projects()
 
     def _ui_create_project(self):
-        n = self.p_name_entry.get()
-        d = self.p_desc_entry.get()
-        if n:
-            self.db.add_project(n, d)
-            self.p_name_entry.delete(0, 'end')
-            self.p_desc_entry.delete(0, 'end')
+        dialog = ctk.CTkInputDialog(text="Nom du nouveau projet:", title="Nouveau Projet")
+        name = dialog.get_input()
+        if name:
+            self.db.add_project(name, "")
+            self.refresh_projects()
+            self.p_combo.set(name)
+            self._on_project_select(name)
+
+    def _ui_add_task_to_project(self):
+        if not self._active_project_id: return
+        dialog = ctk.CTkInputDialog(text="Texte de la tâche:", title="Nouvelle Tâche")
+        txt = dialog.get_input()
+        if txt:
+            self.db.add_task(txt, project_id=self._active_project_id, status="À faire")
+            self._refresh_kanban()
+
+    def _delete_active_project(self):
+        if self._active_project_id:
+            self.db.delete_project(self._active_project_id)
+            self._active_project_id = None
             self.refresh_projects()
 
     def refresh_projects(self):
-        for widget in self.proj_scroll.winfo_children():
-            widget.destroy()
-            
         projects = self.db.get_projects()
-        if not projects:
-            ctk.CTkLabel(self.proj_scroll, text="Aucun projet en cours. 🛠️", text_color="gray").pack(pady=50)
+        self.projects_map = {p[1]: p[0] for p in projects}
+        names = list(self.projects_map.keys())
+        if not names:
+            names = ["Aucun"]
+            self._active_project_id = None
+        
+        self.p_combo.configure(values=names)
+        
+        if self.p_combo.get() not in names:
+            self.p_combo.set(names[0])
+            
+        self._on_project_select(self.p_combo.get())
+
+    def _on_project_select(self, name):
+        self._active_project_id = self.projects_map.get(name)
+        self._refresh_kanban()
+
+    def _refresh_kanban(self):
+        # Clear columns
+        for col in self.columns.values():
+            for widget in col.winfo_children():
+                widget.destroy()
+                
+        if not self._active_project_id:
             return
-
-        for p in projects:
-            p_id, name, desc, stat, start = p
-            card = ctk.CTkFrame(self.proj_scroll, fg_color="#242424", border_width=1, border_color="#333333")
-            card.pack(fill="x", pady=10, padx=10)
             
-            p_header = ctk.CTkFrame(card, fg_color="#2a2a2a", height=40)
-            p_header.pack(fill="x")
+        tasks = self.db.get_project_tasks(self._active_project_id)
+        
+        # tasks order: id, text, status, priority, deadline, dependency_id
+        # Build map to check dependencies
+        task_status_map = {t[0]: t[2] for t in tasks}
+        
+        for t in tasks:
+            t_id, t_text, t_stat, t_prio, t_dl, dep_id = t
+            if t_stat not in self.columns: t_stat = "À faire"
             
-            ctk.CTkLabel(p_header, text=f"🚀 {name}", font=ctk.CTkFont(size=16, weight="bold")).pack(side="left", padx=15, pady=10)
-            ctk.CTkButton(p_header, text="Supprimer Projet", width=100, height=24, fg_color="#aa3333",
-                         command=lambda i=p_id: self._delete_project(i)).pack(side="right", padx=10)
-
-            ctk.CTkLabel(card, text=desc if desc else "Pas de description.", text_color="gray", 
-                        font=ctk.CTkFont(size=12, slant="italic")).pack(anchor="w", padx=20, pady=(5, 10))
-
-            # Add Task to this project
-            task_add_f = ctk.CTkFrame(card, fg_color="transparent")
-            task_add_f.pack(fill="x", padx=20, pady=5)
+            parent_sc = self.columns[t_stat]
             
-            t_entry = ctk.CTkEntry(task_add_f, placeholder_text="Nouvelle étape...", height=25, font=ctk.CTkFont(size=12))
-            t_entry.pack(side="left", fill="x", expand=True, padx=(0, 10))
-            ctk.CTkButton(task_add_f, text="+ Étape", width=60, height=25, 
-                         command=lambda e=t_entry, pid=p_id: self._ui_add_project_task(e, pid)).pack(side="right")
-
-            # Tasks list
-            tasks = self.db.get_project_tasks(p_id)
-            for t in tasks:
-                t_id, t_text, t_stat, t_prio, t_dl = t
-                t_f = ctk.CTkFrame(card, fg_color="transparent")
-                t_f.pack(fill="x", padx=40, pady=4)
+            # Check dependency lock
+            locked = False
+            if dep_id and task_status_map.get(dep_id, 'Fait') != 'Fait':
+                locked = True
                 
-                check_char = "☑️" if t_stat == 'Fait' else "▫️"
-                lbl_color = "gray" if t_stat == 'Fait' else "white"
-                
-                t_lbl = ctk.CTkLabel(t_f, text=f"{check_char} {t_text}", text_color=lbl_color, font=ctk.CTkFont(size=13))
-                t_lbl.pack(side="left")
-                
-                if t_stat != 'Fait':
-                    ctk.CTkButton(t_f, text="✓", width=30, height=20, fg_color="#1f538d",
-                                 command=lambda tid=t_id: self._mark_task_done(tid, "project")).pack(side="right")
+            card_color = "#333333" if not locked else "#2a2a2a"
+            card = ctk.CTkFrame(parent_sc, fg_color=card_color, corner_radius=8, cursor="hand2")
+            card.pack(fill="x", pady=5, padx=5, ipady=5)
+            
+            icon = "🔒 " if locked else ""
+            lbl = ctk.CTkLabel(card, text=f"{icon}{t_text}", font=ctk.CTkFont(size=12, slant="italic" if locked else "roman"), text_color="gray" if locked else "white")
+            lbl.pack(anchor="w", padx=10, pady=5)
+            
+            # Edit button
+            btn_f = ctk.CTkFrame(card, fg_color="transparent", height=20)
+            btn_f.pack(fill="x", padx=5)
+            ctk.CTkButton(btn_f, text="⚙️", width=20, height=20, fg_color="transparent", hover_color="#555", command=lambda tid=t_id, txt=t_text, cur_dep=dep_id: self._edit_task(tid, txt, cur_dep)).pack(side="right")
+            
+            # Bind drag
+            if not locked:
+                card.bind("<ButtonPress-1>", lambda e, tid=t_id, c=card, s=t_stat, text=t_text: self._on_drag_start(e, tid, c, s, text))
+                card.bind("<B1-Motion>", self._on_drag_motion)
+                card.bind("<ButtonRelease-1>", self._on_drag_stop)
+                lbl.bind("<ButtonPress-1>", lambda e, tid=t_id, c=card, s=t_stat, text=t_text: self._on_drag_start(e, tid, c, s, text))
+                lbl.bind("<B1-Motion>", self._on_drag_motion)
+                lbl.bind("<ButtonRelease-1>", self._on_drag_stop)
 
-    def _ui_add_project_task(self, entry_widget, project_id):
-        txt = entry_widget.get()
-        if txt:
-            self.db.add_task(txt, project_id=project_id)
-            entry_widget.delete(0, 'end')
-            self.refresh_projects()
+    def _edit_task(self, t_id, t_text, current_dep_id):
+        popup = ctk.CTkToplevel(self)
+        popup.title("Éditer Tâche")
+        popup.geometry("300x250")
+        popup.attributes("-topmost", True)
+        
+        ctk.CTkLabel(popup, text="Dépendant de :").pack(pady=(10, 0))
+        
+        tasks = self.db.get_project_tasks(self._active_project_id)
+        # (id, name)
+        opts = [("Aucune (0)", 0)] + [(f"{t[1][:20]} ({t[0]})", t[0]) for t in tasks if t[0] != t_id]
+        opts_dict = {name: val for name, val in opts}
+        
+        def_val = opts[0][0]
+        for name, val in opts:
+            if val == current_dep_id:
+                def_val = name
+                break
+                
+        combo = ctk.CTkOptionMenu(popup, values=list(opts_dict.keys()))
+        combo.set(def_val)
+        combo.pack(pady=10)
+        
+        def save():
+            dep = opts_dict[combo.get()]
+            dep_id = dep if dep != 0 else None
+            # Fetch current status to preserve it
+            t_status = "À faire"
+            for col_stat, sc in self.columns.items():
+                pass # The DB will preserve it if we use update_task_detailed
+            # Quick query to get status
+            with self.db.get_connection() as conn:
+                c = conn.cursor()
+                c.execute("SELECT status FROM tasks WHERE id = ?", (t_id,))
+                t_status = c.fetchone()[0]
+                
+            self.db.update_task_detailed(t_id, t_text, t_status, dep_id)
+            popup.destroy()
+            self._refresh_kanban()
+            
+        ctk.CTkButton(popup, text="Sauvegarder", command=save, fg_color="#1f538d").pack(pady=20)
 
-    def _delete_project(self, p_id):
-        self.db.delete_project(p_id)
-        self.refresh_projects()
+    # --- DRAG AND DROP LOGIC ---
+    def _on_drag_start(self, event, task_id, widget, status, text):
+        self._drag_data["id"] = task_id
+        self._drag_data["widget"] = widget
+        self._drag_data["status"] = status
+        
+        # Determine the root window to place the clone correctly
+        root = self.winfo_toplevel()
+        
+        # Dimensions and visual clone
+        w_width = widget.winfo_width()
+        w_height = widget.winfo_height()
+        
+        clone = ctk.CTkFrame(root, fg_color="#1f538d", corner_radius=8, width=w_width, height=w_height)
+        clone.pack_propagate(False) # Prevent shrinking
+        lbl = ctk.CTkLabel(clone, text=text, font=ctk.CTkFont(size=12))
+        lbl.place(relx=0.5, rely=0.5, anchor="center")
+        
+        # Calculate cursor offset relative to the root window
+        self._drag_data["offset_x"] = w_width // 2
+        self._drag_data["offset_y"] = w_height // 2
+        
+        # Place clone centered on the mouse
+        rx = event.x_root - root.winfo_rootx()
+        ry = event.y_root - root.winfo_rooty()
+        clone.place(x=rx - self._drag_data["offset_x"], y=ry - self._drag_data["offset_y"])
+        
+        self._drag_data["clone"] = clone
+        
+        # Lower opacity of original to show it's being moved
+        widget.configure(fg_color="#1a1a1a")
+
+    def _on_drag_motion(self, event):
+        if self._drag_data["clone"]:
+            root = self.winfo_toplevel()
+            rx = event.x_root - root.winfo_rootx()
+            ry = event.y_root - root.winfo_rooty()
+            
+            # Constrain to window bounds roughly
+            self._drag_data["clone"].place(x=rx - self._drag_data["offset_x"], y=ry - self._drag_data["offset_y"])
+
+    def _on_drag_stop(self, event):
+        if not self._drag_data["clone"]: return
+        
+        self._drag_data["clone"].destroy()
+        self._drag_data["clone"] = None
+        
+        # Restore color of original (though it will be destroyed momentarily on refresh)
+        if self._drag_data["widget"].winfo_exists():
+            self._drag_data["widget"].configure(fg_color="#333333")
+        
+        mx, my = event.x_root, event.y_root
+        new_status = self._drag_data["status"]
+        found = False
+        
+        # More robust hit testing: iterate over the columns and check absolute root bounds
+        for st, col in self.columns.items():
+            cx = col.winfo_rootx()
+            cy = col.winfo_rooty()
+            cw = col.winfo_width()
+            ch = col.winfo_height()
+            
+            # If the mouse (mx, my) dropped within the bounding box of this scrollable column
+            if cx <= mx <= cx + cw and cy <= my <= cy + ch:
+                new_status = st
+                found = True
+                break
+                
+        # Fallback to X bounds if they drop slightly above/below the scroll view but within the vertical column
+        if not found:
+            for st, col in self.columns.items():
+                cx = col.winfo_rootx()
+                cw = col.winfo_width()
+                if cx <= mx <= cx + cw:
+                    new_status = st
+                    break
+                
+        if new_status != self._drag_data["status"]:
+            t_id = self._drag_data["id"]
+            with self.db.get_connection() as conn:
+                c = conn.cursor()
+                c.execute("SELECT text, dependency_id FROM tasks WHERE id = ?", (t_id,))
+                res = c.fetchone()
+                if res:
+                    t_text, t_dep = res
+                    self.db.update_task_detailed(t_id, t_text, new_status, t_dep)
+                    self._refresh_kanban()
+                    self._force_refresh_all()
+
 
     # --- TASKS TAB ---
     def _setup_tasks_ui(self):

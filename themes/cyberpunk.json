@@ -1,0 +1,18 @@
+{
+  "name": "Cyber Neon",
+  "colors": {
+    "bg_primary": "#000000",
+    "bg_secondary": "#111111",
+    "bg_tertiary": "#222222",
+    "fg_button": "#ff00ff",
+    "fg_button_hover": "#cc00cc",
+    "fg_button_success": "#00ff00",
+    "fg_button_danger": "#ff0000",
+    "text_primary": "#00ffff",
+    "text_secondary": "#dddddd",
+    "accent": "#ffff00",
+    "sidebar": "#0a0a0a",
+    "card": "#151515",
+    "border": "#ff00ff"
+  }
+}

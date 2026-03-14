@@ -1,0 +1,18 @@
+{
+  "name": "Solarized Light",
+  "colors": {
+    "bg_primary": "#fdf6e3",
+    "bg_secondary": "#eee8d5",
+    "bg_tertiary": "#e4e1d1",
+    "fg_button": "#268bd2",
+    "fg_button_hover": "#217bba",
+    "fg_button_success": "#859900",
+    "fg_button_danger": "#dc322f",
+    "text_primary": "#073642",
+    "text_secondary": "#586e75",
+    "accent": "#cb4b16",
+    "sidebar": "#fdf6e3",
+    "card": "#fdf6e3",
+    "border": "#cb4b16"
+  }
+}

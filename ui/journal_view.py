@@ -144,6 +144,9 @@ class JournalView(ctk.CTkFrame):
             ctk.CTkLabel(header_frame, text=title, font=ctk.CTkFont(size=14, weight="bold")).grid(row=0, column=0, sticky="w")
             ctk.CTkLabel(header_frame, text=date, font=ctk.CTkFont(size=12)).grid(row=0, column=1, sticky="e")
             
+            btn_open = ctk.CTkButton(header_frame, text="🔍 Ouvrir", width=60, height=24, fg_color="#1f538d", hover_color="#2a6ab3", command=lambda l=log: self._open_fullscreen_log(l))
+            btn_open.grid(row=0, column=2, sticky="e", padx=(10, 0))
+            
             # Content snippet (limit to 3 lines approx)
             content_snippet = content if len(content) < 150 else content[:147] + "..."
             ctk.CTkLabel(card, text=content_snippet, justify="left", anchor="w").grid(row=1, column=0, sticky="ew", padx=10, pady=5)
@@ -151,3 +154,76 @@ class JournalView(ctk.CTkFrame):
             # Keywords
             if keywords:
                 ctk.CTkLabel(card, text=f"Tags: {keywords}", text_color="gray", font=ctk.CTkFont(size=10)).grid(row=2, column=0, sticky="w", padx=10, pady=(0, 10))
+
+    def _open_fullscreen_log(self, log):
+        log_id, date, title, content, keywords = log
+        
+        fs_win = ctk.CTkToplevel(self)
+        fs_win.title(f"Log: {title}")
+        fs_win.geometry("800x600")
+        fs_win.attributes("-topmost", True)
+        fs_win.after(200, lambda: fs_win.state('zoomed'))
+        
+        top_bar = ctk.CTkFrame(fs_win, height=40, fg_color="#222222")
+        top_bar.pack(fill="x", side="top")
+        
+        ctk.CTkLabel(top_bar, text=f"Log du {date}", font=ctk.CTkFont(weight="bold")).pack(side="left", padx=10)
+        
+        ctk.CTkButton(top_bar, text="Fermer ❌", fg_color="#ff5555", hover_color="#cc0000", command=fs_win.destroy, width=80).pack(side="right", padx=10, pady=5)
+        
+        def save_changes():
+            new_title = entry_title.get().strip()
+            new_kwd = entry_kwd.get().strip()
+            new_content = txt_content.get("1.0", "end-1c").strip()
+            self.db.update_journal_entry(log_id, new_title, new_content, new_kwd)
+            self.refresh_logs()
+            if hasattr(self.master, "app_instance") and hasattr(self.master.app_instance, "cmd_bar"):
+                self.master.app_instance.cmd_bar._show_feedback(f"Log mis à jour !")
+            fs_win.destroy()
+            
+        def delete_log():
+            import tkinter.messagebox as messagebox
+            # Workaround for topmost window messagebox issue
+            msg_box = ctk.CTkToplevel(fs_win)
+            msg_box.title("Confirmer")
+            msg_box.geometry("300x150")
+            msg_box.attributes("-topmost", True)
+            
+            ctk.CTkLabel(msg_box, text="Voulez-vous vraiment supprimer ce log?", font=ctk.CTkFont(weight="bold")).pack(pady=20)
+            
+            btn_frame = ctk.CTkFrame(msg_box, fg_color="transparent")
+            btn_frame.pack(fill="x", padx=20, pady=10)
+            
+            def confirm():
+                self.db.delete_journal_entry(log_id)
+                self.refresh_logs()
+                if hasattr(self.master, "app_instance") and hasattr(self.master.app_instance, "cmd_bar"):
+                    self.master.app_instance.cmd_bar._show_feedback(f"Log supprimé !")
+                msg_box.destroy()
+                fs_win.destroy()
+                
+            ctk.CTkButton(btn_frame, text="Oui, Supprimer", fg_color="#cc0000", hover_color="#aa0000", command=confirm).pack(side="left", padx=5)
+            ctk.CTkButton(btn_frame, text="Annuler", command=msg_box.destroy).pack(side="right", padx=5)
+        
+        ctk.CTkButton(top_bar, text="💾 Enregistrer", fg_color="#2db34a", hover_color="#238f3a", command=save_changes, width=100).pack(side="right", padx=5)
+        ctk.CTkButton(top_bar, text="🗑️ Supprimer", fg_color="#cc0000", hover_color="#aa0000", command=delete_log, width=100).pack(side="right", padx=15)
+        
+        content_frame = ctk.CTkFrame(fs_win, fg_color="transparent")
+        content_frame.pack(fill="both", expand=True, padx=20, pady=20)
+        content_frame.grid_columnconfigure(1, weight=1)
+        content_frame.grid_rowconfigure(2, weight=1)
+        
+        ctk.CTkLabel(content_frame, text="Titre:").grid(row=0, column=0, sticky="w", pady=(0, 10))
+        entry_title = ctk.CTkEntry(content_frame, font=ctk.CTkFont(size=16, weight="bold"))
+        entry_title.grid(row=0, column=1, sticky="ew", pady=(0, 10), padx=(10, 0))
+        entry_title.insert(0, title)
+        
+        ctk.CTkLabel(content_frame, text="Mots-clés:").grid(row=1, column=0, sticky="w", pady=(0, 10))
+        entry_kwd = ctk.CTkEntry(content_frame, font=ctk.CTkFont(size=14))
+        entry_kwd.grid(row=1, column=1, sticky="ew", pady=(0, 10), padx=(10, 0))
+        entry_kwd.insert(0, keywords if keywords else "")
+        
+        ctk.CTkLabel(content_frame, text="Contenu:").grid(row=2, column=0, sticky="nw")
+        txt_content = ctk.CTkTextbox(content_frame, font=ctk.CTkFont(family="Consolas", size=14), wrap="word")
+        txt_content.grid(row=2, column=1, sticky="nsew", padx=(10, 0))
+        txt_content.insert("1.0", content)

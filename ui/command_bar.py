@@ -225,6 +225,21 @@ class CommandBar(ctk.CTkFrame):
                 self._show_feedback(f"Disponibles: {names}")
             else:
                 self._show_feedback("Aucune formule disponible.", is_error=True)
+                
+        elif cmd_text.startswith('/theme'):
+            parts = cmd_text.split()
+            if len(parts) == 2:
+                theme_name = parts[1]
+                if hasattr(self.app, 'theme_manager'):
+                    if self.app.theme_manager.set_theme(theme_name):
+                        self.app.reload_theme()
+                        self._show_feedback(f"Thème appliqué : {theme_name}")
+                    else:
+                        self._show_feedback(f"Thème introuvable : {theme_name}", is_error=True)
+            else:
+                if hasattr(self.app, 'theme_manager'):
+                    themes = ", ".join([t[0] for t in self.app.theme_manager.list_themes()])
+                    self._show_feedback(f"Thèmes: {themes}")
 
         elif cmd_text.startswith('/cite '):
             url = cmd_text[6:].strip()
@@ -442,7 +457,8 @@ class CommandBar(ctk.CTkFrame):
             "🛠️ OUTILS & VISION": [
                 ("/capture", "Lancer la capture d'écran pour OCR/LaTeX"),
                 ("/widget [timer|const|note]", "Lancer un widget flottant"),
-                ("/cite [URL]", "Extraire et ajouter une citation bibliographique")
+                ("/cite [URL]", "Extraire et ajouter une citation bibliographique"),
+                ("/theme [nom]", "Changer le thème visuel (ex: /theme cyberpunk)")
             ]
         }
         

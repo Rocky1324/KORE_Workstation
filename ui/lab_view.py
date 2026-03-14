@@ -4,12 +4,15 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from mpl_toolkits.mplot3d import Axes3D
 import numpy as np
 import tkinter as tk
+from tkinter import filedialog
 from core.lab_engine import LabEngine
+from core.data_engine import DataEngine
 
 class LabView(ctk.CTkFrame):
     def __init__(self, master, **kwargs):
         super().__init__(master, **kwargs)
         self.engine = LabEngine()
+        self.data_engine = DataEngine()
         
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(0, weight=1)
@@ -19,9 +22,11 @@ class LabView(ctk.CTkFrame):
         
         self.tab_circuits = self.tabview.add("Analyse de Circuits")
         self.tab_physique = self.tabview.add("Simulation Physique")
+        self.tab_data     = self.tabview.add("Cahier de Labo / Data")
         
         self._setup_circuit_tab()
         self._setup_physics_tab()
+        self._setup_data_tab()
 
     # --- CIRCUIT TAB (Visual Designer V2.5) ---
     def _setup_circuit_tab(self):
@@ -671,3 +676,213 @@ class LabView(ctk.CTkFrame):
             canvas.get_tk_widget().pack(fill="both", expand=True)
         except Exception as e:
             tk.messagebox.showerror("Erreur Simulation", str(e))
+
+    # --- DATA LAB TAB (CSV & Regression) ---
+    def _setup_data_tab(self):
+        self.tab_data.grid_columnconfigure(1, weight=1)
+        self.tab_data.grid_rowconfigure(0, weight=1)
+        
+        # --- LEFT PANEL: Controls ---
+        self.data_ctrl = ctk.CTkScrollableFrame(self.tab_data, width=300)
+        self.data_ctrl.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
+        
+        ctk.CTkLabel(self.data_ctrl, text="CAHIER DE DATA", font=ctk.CTkFont(size=14, weight="bold")).pack(pady=10)
+        
+        # Load File
+        self.btn_load_csv = ctk.CTkButton(self.data_ctrl, text="📁 Importer CSV", command=self._ui_load_csv, fg_color="#1f538d")
+        self.btn_load_csv.pack(fill="x", pady=(10, 5), padx=10)
+        
+        self.lbl_filename = ctk.CTkLabel(self.data_ctrl, text="Aucun fichier", text_color="gray", font=ctk.CTkFont(size=11))
+        self.lbl_filename.pack(pady=(0, 15))
+        
+        # Variable Selection
+        ctk.CTkLabel(self.data_ctrl, text="Axe X (Indépendante) :").pack(anchor="w", padx=10)
+        self.combo_x = ctk.CTkOptionMenu(self.data_ctrl, values=["---"], state="disabled")
+        self.combo_x.pack(fill="x", padx=10, pady=(0, 10))
+        
+        ctk.CTkLabel(self.data_ctrl, text="Axe Y (Dépendante) :").pack(anchor="w", padx=10)
+        self.combo_y = ctk.CTkOptionMenu(self.data_ctrl, values=["---"], state="disabled")
+        self.combo_y.pack(fill="x", padx=10, pady=(0, 20))
+        
+        # Regression Settings
+        ctk.CTkLabel(self.data_ctrl, text="Type de Régression :").pack(anchor="w", padx=10)
+        self.combo_reg = ctk.CTkOptionMenu(self.data_ctrl, values=["Linéaire", "Polynomiale"])
+        self.combo_reg.pack(fill="x", padx=10, pady=(0, 10))
+        
+        # Button Trace
+        self.btn_trace = ctk.CTkButton(self.data_ctrl, text="📈 Tracer le Graphe", command=self._ui_plot_data, 
+                                      fg_color="green", font=ctk.CTkFont(weight="bold"), state="disabled")
+        self.btn_trace.pack(fill="x", pady=20, padx=10)
+        
+        # Save Button
+        self.btn_save_plot = ctk.CTkButton(self.data_ctrl, text="💾 Sauvegarder Graphe", command=self._ui_save_plot,
+                                          fg_color="#333", state="disabled")
+        self.btn_save_plot.pack(fill="x", pady=(0, 20), padx=10)
+        
+        # Results Display
+        self.res_frame = ctk.CTkFrame(self.data_ctrl, fg_color="#1a1a1a", corner_radius=10)
+        self.res_frame.pack(fill="x", padx=10, pady=10)
+        
+        ctk.CTkLabel(self.res_frame, text="Résultats Statistiques", font=ctk.CTkFont(size=12, weight="bold")).pack(pady=5)
+        self.lbl_eq = ctk.CTkLabel(self.res_frame, text="Équation:\n---", font=ctk.CTkFont(family="Consolas", size=11))
+        self.lbl_eq.pack(pady=5, padx=5)
+        self.lbl_r2 = ctk.CTkLabel(self.res_frame, text="R² = ---")
+        self.lbl_r2.pack(pady=5)
+        
+        # --- RIGHT PANEL: Plot ---
+        self.data_plot_container = ctk.CTkFrame(self.tab_data, fg_color="#0b0b0b")
+        self.data_plot_container.grid(row=0, column=1, sticky="nsew", padx=10, pady=10)
+        self.data_plot_container.grid_rowconfigure(0, weight=1)
+        self.data_plot_container.grid_columnconfigure(0, weight=1)
+        
+        self._show_empty_data_plot()
+
+    def _ui_load_csv(self):
+        filepath = filedialog.askopenfilename(
+            title="Sélectionner un fichier de données",
+            filetypes=(("Fichiers CSV", "*.csv"), ("Fichiers Texte", "*.txt"), ("Tous les fichiers", "*.*"))
+        )
+        if not filepath:
+            return
+            
+        res = self.data_engine.load_csv(filepath)
+        if not res["success"]:
+            tk.messagebox.showerror("Erreur CSV", res["error"])
+            return
+            
+        self.lbl_filename.configure(text=res["filename"])
+        
+        # Update Dropdowns
+        cols = res["columns"]
+        self.combo_x.configure(values=cols, state="normal")
+        self.combo_y.configure(values=cols, state="normal")
+        
+        if len(cols) >= 2:
+            self.combo_x.set(cols[0])
+            self.combo_y.set(cols[1])
+        elif len(cols) == 1:
+            self.combo_x.set(cols[0])
+            self.combo_y.set(cols[0])
+            
+        self.btn_trace.configure(state="normal")
+        self._ui_plot_data() # Plot raw data immediately
+
+    def _show_empty_data_plot(self):
+        for w in self.data_plot_container.winfo_children(): w.destroy()
+        fig = plt.figure(figsize=(5, 4), dpi=100)
+        fig.patch.set_facecolor('#0b0b0b')
+        ax = fig.add_subplot(111)
+        ax.set_facecolor('#0b0b0b')
+        ax.tick_params(colors='white')
+        ax.text(0.5, 0.5, "Importez un CSV pour commencer", 
+                color="gray", ha='center', va='center', transform=ax.transAxes)
+        ax.grid(True, alpha=0.1)
+        
+        canvas = FigureCanvasTkAgg(fig, master=self.data_plot_container)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill="both", expand=True)
+
+    def _ui_plot_data(self):
+        x_col = self.combo_x.get()
+        y_col = self.combo_y.get()
+        reg_type = self.combo_reg.get()
+        
+        if x_col == "---" or y_col == "---": return
+        
+        # Perform calculation
+        deg = 2 if reg_type == "Polynomiale" else 1
+        res = self.data_engine.perform_regression(x_col, y_col, type_reg=reg_type, degree=deg)
+        
+        if not res["success"]:
+            tk.messagebox.showerror("Erreur de Régression", res["error"])
+            return
+            
+        # Update UI text
+        self.lbl_eq.configure(text=f"Équation:\n{res['equation']}")
+        
+        r2_color = "#4cd964" if res['r2'] > 0.9 else "#ff9500" if res['r2'] > 0.7 else "#ff3b30"
+        self.lbl_r2.configure(text=f"R² = {res['r2']:.4f}", text_color=r2_color)
+        
+        # Draw Plot
+        for w in self.data_plot_container.winfo_children(): w.destroy()
+        
+        fig = plt.figure(figsize=(5, 4), dpi=100)
+        fig.patch.set_facecolor('#0b0b0b')
+        ax = fig.add_subplot(111)
+        ax.set_facecolor('#0b0b0b')
+        ax.tick_params(colors='white')
+        
+        # Scatter actual data
+        ax.scatter(res['x_data'], res['y_data'], color='#0a84ff', label='Données Brutes', alpha=0.7)
+        
+        # Line of best fit
+        ax.plot(res['x_line'], res['y_line'], color='#ff2d55', linewidth=2, label=f'Régression {reg_type}')
+        
+        ax.set_xlabel(x_col, color="white")
+        ax.set_ylabel(y_col, color="white")
+        ax.set_title(f"Analyse: {y_col} = f({x_col})", color="white")
+        
+        ax.grid(True, alpha=0.2)
+        ax.legend(facecolor='#1a1a1a', edgecolor='none', labelcolor='white')
+        
+        # Enable save button
+        self.btn_save_plot.configure(state="normal")
+        
+        # Save reference for exporting
+        self.current_fig = fig
+        
+        canvas = FigureCanvasTkAgg(fig, master=self.data_plot_container)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill="both", expand=True)
+
+    def _ui_save_plot(self):
+        if not hasattr(self, 'current_fig') or self.current_fig is None:
+            return
+            
+        filepath = filedialog.asksaveasfilename(
+            title="Sauvegarder le Graphe",
+            defaultextension=".png",
+            filetypes=(("Image PNG", "*.png"), ("Image JPEG", "*.jpg"), ("Image SVG", "*.svg"), ("Tous les fichiers", "*.*"))
+        )
+        if not filepath:
+            return
+            
+        try:
+            # Re-configure figure properties slightly for export (white background instead of dark)
+            # as dark background might not be ideal for printed reports
+            self.current_fig.patch.set_facecolor('#ffffff')
+            ax = self.current_fig.axes[0]
+            ax.set_facecolor('#ffffff')
+            ax.tick_params(colors='black')
+            ax.xaxis.label.set_color('black')
+            ax.yaxis.label.set_color('black')
+            ax.title.set_color('black')
+            
+            # Re-draw legend for white background
+            legend = ax.get_legend()
+            if legend:
+                for text in legend.get_texts():
+                    text.set_color("black")
+                legend.get_frame().set_facecolor('#f0f0f0')
+                legend.get_frame().set_edgecolor('gray')
+            
+            self.current_fig.savefig(filepath, dpi=300, bbox_inches='tight')
+            tk.messagebox.showinfo("Succès", "Image sauvegardée avec succès!")
+            
+            # Revert to dark mode for the app
+            self.current_fig.patch.set_facecolor('#0b0b0b')
+            ax.set_facecolor('#0b0b0b')
+            ax.tick_params(colors='white')
+            ax.xaxis.label.set_color('white')
+            ax.yaxis.label.set_color('white')
+            ax.title.set_color('white')
+            if legend:
+                for text in legend.get_texts():
+                    text.set_color("white")
+                legend.get_frame().set_facecolor('#1a1a1a')
+                legend.get_frame().set_edgecolor('none')
+                
+            self.current_fig.canvas.draw()
+            
+        except Exception as e:
+            tk.messagebox.showerror("Erreur de Sauvegarde", str(e))

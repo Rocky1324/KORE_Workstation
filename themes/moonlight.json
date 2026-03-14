@@ -1,0 +1,18 @@
+{
+  "name": "Moonlight Dark",
+  "colors": {
+    "bg_primary": "#0f172a",
+    "bg_secondary": "#1e293b",
+    "bg_tertiary": "#334155",
+    "fg_button": "#3b82f6",
+    "fg_button_hover": "#2563eb",
+    "fg_button_success": "#10b981",
+    "fg_button_danger": "#ef4444",
+    "text_primary": "#f8fafc",
+    "text_secondary": "#cbd5e1",
+    "accent": "#0ea5e9",
+    "sidebar": "#020617",
+    "card": "#1e293b",
+    "border": "#2dd4bf"
+  }
+}
