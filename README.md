@@ -1,4 +1,4 @@
-# KORE-Workstation V6.7: Ultimate Engineering Hub 🚀🎓
+# KORE-Workstation: Ultimate Engineering Hub 🚀🎓
 
 **KORE-Workstation** est un assistant de travail personnel tout-en-un, conçu spécifiquement pour les étudiants en ingénierie et en sciences. Conçu avec Python et CustomTkinter, cet outil centralise vos révisions, vos logs de bugs, vos documents de cours et vos scripts personnalisés dans un environnement natif, moderne et "Dark Mode".
 
